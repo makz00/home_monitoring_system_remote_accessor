@@ -3,6 +3,7 @@
  * Author: Maksymilian Komarnicki
  */
 
+#include <unistd.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"

@@ -26,7 +26,7 @@
 static const char *TAG = "UDPS_HANDLER";
 
 esp_err_t udps_init(){
-    streamer_config_t streamer_config = {
+    streamer_client_config_t streamer_config = {
         .data_receive_task_info = {
             .stack_size = CONFIG_STREAMER_STACK_SIZE,
             .task_prio = CONFIG_STREAMER_PRIORITY,
@@ -52,7 +52,7 @@ esp_err_t udps_init(){
 
     esp_err_t err = streamer_client_init(&streamer_config);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "UDP streamer handler central Init Failed");
+        ESP_LOGE(TAG, "UDP streamer handler central init failed");
         return err;
     }
 
