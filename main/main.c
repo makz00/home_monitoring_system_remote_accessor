@@ -3,19 +3,6 @@
  * Author: Maksymilian Komarnicki
  */
 
-/*
- * ASSUMPTIONS BEG --------------------------------------------------------------------------------
- * ASSUMPTIONS END --------------------------------------------------------------------------------
- *
- * TODO BEG ---------------------------------------------------------------------------------------
- * - Configuration options to add in 'menuconfig'/Kconfig file
- * TODO END ---------------------------------------------------------------------------------------
- */
-
-#include <unistd.h>
-
-#include "sdkconfig.h"
-#include "esp_system.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"
@@ -23,8 +10,6 @@
 #include "udps_handler.h"
 #include "wifi_handler.h"
 #include "web_handler.h"
-
-static const char *TAG = "HOME_MONITORING_SYSTEM_CENTRAL";
 
 void app_main(void)
 {

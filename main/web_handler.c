@@ -3,20 +3,6 @@
  * Author: Maksymilian Komarnicki
  */
 
-/*
- * ASSUMPTIONS BEG --------------------------------------------------------------------------------
- * - Frame buffers are received as JPEG format, so there is no need to convert it when sending to
- *   HTTP client
- * ASSUMPTIONS END --------------------------------------------------------------------------------
- *
- * TODO BEG ---------------------------------------------------------------------------------------
- * - Add posibility to negotiate frame buffers format
- *      - HTTP server offers options to choose to client
- *      - HTTP sevver call UDPS intercace method to change FB format
- *      - UDPS internally try to negotiate new FB format
- * TODO END ---------------------------------------------------------------------------------------
- */
-
 #include "esp_log.h"
 #include "esp_err.h"
 
