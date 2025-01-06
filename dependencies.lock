@@ -24,6 +24,6 @@ direct_dependencies:
 - espressif/esp32-camera
 - espressif/mdns
 - idf
-manifest_hash: 014b4459534a0beacccc84ee09cc4c81bc388537743f172d84d0fff4ee52ad49
+manifest_hash: e80532daf903608c748a472cc6c7003804b2ac798258f9dff31a9a6f29583d8e
 target: esp32
 version: 2.0.0
