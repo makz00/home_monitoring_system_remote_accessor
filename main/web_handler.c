@@ -12,6 +12,8 @@
 #include "esp_timer.h"
 #include "esp_http_server.h"
 
+// #include "index_html_gz.h"
+#include "camera_stream_page_v3.h"
 #include "espfsp_client_play.h"
 
 static const char *TAG = "WEB_HANDLER";
@@ -155,6 +157,59 @@ esp_err_t stream_handler(httpd_req_t *req)
     return res;
 }
 
+static esp_err_t index_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    return httpd_resp_send(req, (const char *)camera_stream_page, camera_stream_page_len);
+}
+
+static bool stream_started = false;
+
+static esp_err_t start_stream_handler(httpd_req_t *req)
+{
+    esp_err_t err = ESP_OK;
+    ESP_LOGI(TAG, "Start stream");
+
+    if (!stream_started)
+    {
+        err = espfsp_client_play_start_stream(client_handler);
+    }
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Start stream failed");
+    }
+    if (err == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Stream started");
+        stream_started = true;
+    }
+
+    return httpd_resp_send(req, NULL, 0);
+}
+
+static esp_err_t stop_stream_handler(httpd_req_t *req)
+{
+    esp_err_t err = ESP_OK;
+    ESP_LOGI(TAG, "Stop stream");
+
+    if (stream_started)
+    {
+        err = espfsp_client_play_stop_stream(client_handler);
+    }
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Stop stream failed");
+    }
+    if (err == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Stream stopped");
+        stream_started = false;
+    }
+
+    return httpd_resp_send(req, NULL, 0);
+}
+
 httpd_uri_t stream_uri = {
     .uri = "/stream",
     .method = HTTP_GET,
@@ -168,6 +223,46 @@ httpd_uri_t stream_uri = {
 #endif
 };
 
+httpd_uri_t index_uri = {
+    .uri = "/index",
+    .method = HTTP_GET,
+    .handler = index_handler,
+    .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    ,
+    .is_websocket = true,
+    .handle_ws_control_frames = false,
+    .supported_subprotocol = NULL
+#endif
+};
+
+httpd_uri_t start_stream_uri = {
+    .uri = "/start_stream",
+    .method = HTTP_GET,
+    .handler = start_stream_handler,
+    .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    ,
+    .is_websocket = true,
+    .handle_ws_control_frames = false,
+    .supported_subprotocol = NULL
+#endif
+};
+
+httpd_uri_t stop_stream_uri = {
+    .uri = "/stop_stream",
+    .method = HTTP_GET,
+    .handler = stop_stream_handler,
+    .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    ,
+    .is_websocket = true,
+    .handle_ws_control_frames = false,
+    .supported_subprotocol = NULL
+#endif
+};
+
+
 httpd_handle_t start_webserver(void)
 {
     httpd_handle_t server = NULL;
@@ -177,21 +272,13 @@ httpd_handle_t start_webserver(void)
 
     ra_filter_init(&ra_filter, 20);
 
-    ESP_LOGI(TAG, "Start stream");
-
-    esp_err_t err = espfsp_client_play_start_stream(client_handler);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Start stream failed");
-        return NULL;
-    }
-
-    ESP_LOGI(TAG, "Stream started");
-
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &stream_uri);
+        httpd_register_uri_handler(server, &start_stream_uri);
+        httpd_register_uri_handler(server, &stop_stream_uri);
+        httpd_register_uri_handler(server, &index_uri);
 
         return server;
     }
@@ -202,13 +289,6 @@ httpd_handle_t start_webserver(void)
 
 esp_err_t stop_webserver(httpd_handle_t server)
 {
-    esp_err_t err = espfsp_client_play_stop_stream(client_handler);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Stop stream failed");
-        return err;
-    }
-
     return httpd_stop(server);
 }
 
