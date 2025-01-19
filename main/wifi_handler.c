@@ -10,6 +10,7 @@
 #include "esp_event.h"
 
 #include "wifi_handler.h"
+#include "wifi_config_index_html_gz.h"
 
 #define EXAMPLE_ESP_MAXIMUM_RETRY 10
 
@@ -126,21 +127,9 @@ static void load_wifi_credentials(char *ssid, char *password) {
 }
 
 esp_err_t handle_root_get(httpd_req_t *req) {
-    const char *html_form =
-        "<!DOCTYPE html>"
-        "<html>"
-        "<head><title>WiFi Setup</title></head>"
-        "<body>"
-        "<h1>ESP32 WiFi Configuration</h1>"
-        "<form method=\"POST\" action=\"/connect\">"
-        "SSID: <input type=\"text\" name=\"ssid\"><br>"
-        "Password: <input type=\"password\" name=\"password\"><br>"
-        "<input type=\"submit\" value=\"Connect\">"
-        "</form>"
-        "</body>"
-        "</html>";
-
-    httpd_resp_send(req, html_form, strlen(html_form));
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_send(req, (const char *)wifi_config_index_html_gz, wifi_config_index_html_gz_len);
     return ESP_OK;
 }
 

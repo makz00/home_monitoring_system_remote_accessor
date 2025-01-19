@@ -12,7 +12,7 @@
 #include "esp_timer.h"
 #include "esp_http_server.h"
 
-#include "index_html_gz_final_v13.h"
+#include "index_html_gz.h"
 #include "espfsp_client_play.h"
 
 static const char *TAG = "WEB_HANDLER";
@@ -81,8 +81,7 @@ esp_err_t stream_handler(httpd_req_t *req) {
             break;
         }
 
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        break;
+        vTaskDelay(30 / portTICK_PERIOD_MS);
     }
 
     // Zakończ połączenie
@@ -232,7 +231,7 @@ esp_err_t set_cam_handler(httpd_req_t *req) {
     espfsp_cam_config_t cam_config = {
         .cam_fb_count = 2, // Useless now
         .cam_grab_mode = ESPFSP_GRAB_LATEST, // Useless now
-        .cam_jpeg_quality = 25,
+        .cam_jpeg_quality = 30,
         .cam_frame_size = ESPFSP_FRAMESIZE_96X96,
         .cam_pixel_format = ESPFSP_PIXFORMAT_JPEG,
     };
@@ -395,12 +394,9 @@ httpd_handle_t start_webserver(void)
     // config.keep_alive_interval = 5; // Interwał między Keep-Alive a żądaniem
     // config.keep_alive_count = 3; // Maksymalna liczba Keep-Alive prób
 
-    // ra_filter_init(&ra_filter, 20);
-
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+    ESP_LOGI(TAG, "Starting web server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
         ESP_LOGI(TAG, "Registering URI handlers");
-        httpd_register_uri_handler(server, &stream_uri);
         httpd_register_uri_handler(server, &start_stream_uri);
         httpd_register_uri_handler(server, &stop_stream_uri);
         httpd_register_uri_handler(server, &index_uri);
@@ -408,7 +404,6 @@ httpd_handle_t start_webserver(void)
         httpd_register_uri_handler(server, &set_src_uri);
         httpd_register_uri_handler(server, &set_frame_uri);
         httpd_register_uri_handler(server, &set_cam_uri);
-
         return server;
     }
 
@@ -416,18 +411,54 @@ httpd_handle_t start_webserver(void)
     return NULL;
 }
 
-esp_err_t stop_webserver(httpd_handle_t server)
+httpd_handle_t start_stream_server(void)
+{
+    httpd_handle_t server = NULL;
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+    // Ustawienie Keep-Alive timeout
+    config.lru_purge_enable = true; // LRU Cache dla zarządzania połączeniami
+    // config.keep_alive_enable = true; // Włączenie Keep-Alive
+    // config.keep_alive_idle = 10; // Czas (w sekundach), przez jaki połączenie pozostaje otwarte bez aktywności
+    // config.keep_alive_interval = 5; // Interwał między Keep-Alive a żądaniem
+    // config.keep_alive_count = 3; // Maksymalna liczba Keep-Alive prób
+
+    // ra_filter_init(&ra_filter, 20);
+
+    config.server_port += 1;
+    config.ctrl_port += 1;
+
+    ESP_LOGI(TAG, "Starting stream server on port: '%d'", config.server_port);
+    if (httpd_start(&server, &config) == ESP_OK) {
+        ESP_LOGI(TAG, "Registering URI handlers");
+        httpd_register_uri_handler(server, &stream_uri);
+        return server;
+    }
+
+    ESP_LOGI(TAG, "Error starting server!");
+    return NULL;
+}
+
+esp_err_t stop_server(httpd_handle_t server)
 {
     return httpd_stop(server);
 }
 
-void disconnect_handler(void* arg, esp_event_base_t event_base,
-                               int32_t event_id, void* event_data)
+void connect_server(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    httpd_handle_t* server = (httpd_handle_t*) arg;
+    if (*server == NULL) {
+        ESP_LOGI(TAG, "Starting webserver");
+        *server = start_webserver();
+    }
+}
+
+void disconnect_server(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
         ESP_LOGI(TAG, "Stopping webserver");
-        if (stop_webserver(*server) == ESP_OK) {
+        if (stop_server(*server) == ESP_OK) {
             *server = NULL;
         } else {
             ESP_LOGE(TAG, "Failed to stop http server");
@@ -435,12 +466,24 @@ void disconnect_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-void connect_handler(void* arg, esp_event_base_t event_base,
-                            int32_t event_id, void* event_data)
+void connect_stream_server(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server == NULL) {
-        ESP_LOGI(TAG, "Starting webserver");
-        *server = start_webserver();
+        ESP_LOGI(TAG, "Starting stream server");
+        *server = start_stream_server();
+    }
+}
+
+void disconnect_stream_server(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    httpd_handle_t* server = (httpd_handle_t*) arg;
+    if (*server) {
+        ESP_LOGI(TAG, "Stopping stream server");
+        if (stop_server(*server) == ESP_OK) {
+            *server = NULL;
+        } else {
+            ESP_LOGE(TAG, "Failed to stop http server");
+        }
     }
 }
