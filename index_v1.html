@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            margin-bottom: 20px;
+        }
+        button {
+            margin: 5px;
+        }
+        form {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Streaming Page</h1>
+
+    <div class="container" id="source-buttons">
+        <h2>Available Sources</h2>
+        <p id="no-sources-message" style="display:none;">No sources available.</p>
+    </div>
+
+    <div class="container">
+        <button id="stream-button">Start stream</button>
+        <div id="video-container" style="display:none;">
+            <img id="stream" alt="Video Stream" />
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Camera Settings</h2>
+        <form id="camera-settings-form">
+            <label>JPEG Quality: <input type="text" name="cam_jpeg_quality"></label><br>
+            <label>Frame Size (Bytes): <input type="text" name="cam_frame_size"></label><br>
+            <label>Pixel Format: <input type="text" name="cam_pixel_format"></label><br>
+            <button type="submit">Set Camera Settings</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <h2>Frame Settings</h2>
+        <form id="frame-settings-form">
+            <label>FPS: <input type="text" name="fps"></label><br>
+            <label>Frame Max Length (Bytes): <input type="text" name="frame_max_len"></label><br>
+            <label>Buffered Frame Buffers: <input type="text" name="buffered_fbs"></label><br>
+            <label>Frame Buffer Before Get: <input type="text" name="fb_in_buffer_before_get"></label><br>
+            <button type="submit">Set Frame Settings</button>
+        </form>
+    </div>
+
+    <script>
+        const streamButton = document.getElementById('stream-button');
+        const stream = document.getElementById('stream');
+        const videoContainer = document.getElementById('video-container');
+        const sourceButtonsContainer = document.getElementById('source-buttons');
+        const noSourcesMessage = document.getElementById('no-sources-message');
+
+        let isStreaming = false;
+        let streamTimeout = null;
+        let xhr = null;
+
+        async function fetchSources() {
+            try {
+                const response = await fetch('/get_sources');
+                const sources = await response.json();
+
+                if (sources.length === 0) {
+                    noSourcesMessage.style.display = 'block';
+                } else {
+                    noSourcesMessage.style.display = 'none';
+                    sources.forEach(source => {
+                        const button = document.createElement('button');
+                        button.textContent = source;
+                        button.addEventListener('click', () => {
+                            fetch(`/set_source?name=${encodeURIComponent(source)}`);
+                        });
+                        sourceButtonsContainer.appendChild(button);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching sources:', error);
+            }
+        }
+
+        function fetchStream() {
+            if (!isStreaming) return;
+
+            xhr = new XMLHttpRequest();
+            xhr.open("GET", `/stream?${Date.now()}`, true);
+            xhr.responseType = "text";
+
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    console.warn("Stream connection closed by server.");
+                    stopStream();
+                }
+            };
+
+            xhr.onprogress = () => {
+                if (!isStreaming) {
+                    xhr.abort();
+                    return;
+                }
+
+                const boundary = "--frame";
+                const parts = xhr.response.split(boundary);
+                parts.forEach(part => {
+                    const contentTypeMatch = part.match(/Content-Type:\s*(.*?)[\r\n]/);
+                    console.log("lest start for each part ...")
+                    if (contentTypeMatch) {
+                        const contentType = contentTypeMatch[1].trim();
+                        console.log("content type matched ...")
+                        if (contentType.startsWith("image")) {
+                            const imageData = part.split("\r\n\r\n")[1];
+                            console.log("starts with image ...")
+                            if (imageData) {
+                                console.log("received and pused")
+                                const blob = new Blob([imageData], { type: contentType });
+                                stream.src = URL.createObjectURL(blob);
+                            }
+                        }
+                    }
+                });
+
+                clearTimeout(streamTimeout);
+                streamTimeout = setTimeout(() => {
+                    console.warn("No images received for 10 seconds. Stopping stream.");
+                    stopStream();
+                }, 10000);
+            };
+
+            xhr.onerror = () => {
+                console.error("Stream error occurred.");
+                stopStream();
+            };
+
+            xhr.send();
+        }
+
+        function startStream() {
+            fetch('/start_stream').then(() => {
+                isStreaming = true;
+                streamButton.textContent = 'Stop stream';
+                videoContainer.style.display = 'block';
+                fetchStream();
+            }).catch(error => {
+                console.error('Error starting stream:', error);
+            });
+        }
+
+        function stopStream() {
+            fetch('/stop_stream').then(() => {
+                isStreaming = false;
+                streamButton.textContent = 'Start stream';
+                videoContainer.style.display = 'none';
+                if (xhr) {
+                    xhr.abort();
+                }
+                clearTimeout(streamTimeout);
+            }).catch(error => {
+                console.error('Error stopping stream:', error);
+            });
+        }
+
+        streamButton.addEventListener('click', () => {
+            if (isStreaming) {
+                stopStream();
+            } else {
+                startStream();
+            }
+        });
+
+        document.getElementById('camera-settings-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const formData = new URLSearchParams(new FormData(event.target)).toString();
+            fetch(`/set_cam?${formData}`);
+        });
+
+        document.getElementById('frame-settings-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const formData = new URLSearchParams(new FormData(event.target)).toString();
+            fetch(`/set_frame?${formData}`);
+        });
+
+        // Fetch sources on page load
+        fetchSources();
+    </script>
+
+</body>
+</html>

@@ -7,4 +7,4 @@
 
 typedef int esp_err_t;
 
-esp_err_t wifi_init_sta(void);
+esp_err_t wifi_init(void);

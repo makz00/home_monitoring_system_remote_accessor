@@ -7,28 +7,22 @@
 #include "esp_err.h"
 
 #include "mdns.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-#include "udps_handler.h"
 #include "espfsp_client_play.h"
+#include "udps_handler.h"
 
 #define CONFIG_STREAMER_STACK_SIZE 4096
 #define CONFIG_STREAMER_PRIORITY 5
 
-#define CONFIG_STREAMER_CLIENT_LOCAL_PORT_CONTROL 5003
-#define CONFIG_STREAMER_CLIENT_LOCAL_PORT_DATA 5004
-#define CONFIG_STREAMER_CLIENT_REMOTE_PORT_DATA_CONTROL 5003
-#define CONFIG_STREAMER_CLIENT_REMOTE_PORT_DATA_DATA 5004
+#define CONFIG_STREAMER_PORT_CONTROL 5003
+#define CONFIG_STREAMER_PORT_DATA 5004
 
-#define CONFIG_STREAMER_CAMERA_PIXFORMAT ESPFSP_PIXFORMAT_JPEG
-#define CONFIG_STREAMER_CAMERA_FRAMESIZE ESPFSP_FRAMESIZE_CIF
 #define CONFIG_STREAMER_FRAME_MAX_LENGTH (100 * 1014)
 #define CONFIG_STREAMER_FPS 15
-
-#define CONFIG_STREAMER_CAMERA_GRAB_MODE ESPFSP_GRAB_WHEN_EMPTY
-#define CONFIG_STREAMER_CAMERA_JPEG_QUALITY 6
-#define CONFIG_STREAMER_CAMERA_FB_COUNT 2
-
 #define CONFIG_STREAMER_BUFFERED_FRAMES 10
+#define CONFIG_STREAMER_FRAMSE_BEFORE_GET 0
 
 #define CONFIG_STREAMER_IS_SERVER_LOCAL 1
 #define CONFIG_STREAMER_MDNS_SERVER_NAME "espfsp_server"
@@ -69,10 +63,9 @@ esp_err_t udps_init(){
     struct esp_ip4_addr server_addr;
     if (CONFIG_STREAMER_IS_SERVER_LOCAL)
     {
-        esp_err_t ret = resolve_mdns_host(CONFIG_STREAMER_MDNS_SERVER_NAME, &server_addr);
-        if (ret != ESP_OK)
+        while (resolve_mdns_host(CONFIG_STREAMER_MDNS_SERVER_NAME, &server_addr) != ESP_OK)
         {
-            return ret;
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
         }
     }
     else
@@ -90,27 +83,21 @@ esp_err_t udps_init(){
             .task_prio = CONFIG_STREAMER_PRIORITY,
         },
         .local = {
-            .control_port = CONFIG_STREAMER_CLIENT_LOCAL_PORT_CONTROL,
-            .data_port = CONFIG_STREAMER_CLIENT_LOCAL_PORT_DATA,
+            .control_port = CONFIG_STREAMER_PORT_CONTROL,
+            .data_port = CONFIG_STREAMER_PORT_DATA,
         },
         .remote = {
-            .control_port = CONFIG_STREAMER_CLIENT_REMOTE_PORT_DATA_CONTROL,
-            .data_port = CONFIG_STREAMER_CLIENT_REMOTE_PORT_DATA_DATA,
+            .control_port = CONFIG_STREAMER_PORT_CONTROL,
+            .data_port = CONFIG_STREAMER_PORT_DATA,
         },
         .data_transport = ESPFSP_TRANSPORT_TCP,
         .remote_addr.addr = server_addr.addr,
         .frame_config = {
-            .pixel_format = CONFIG_STREAMER_CAMERA_PIXFORMAT,
-            .frame_size = CONFIG_STREAMER_CAMERA_FRAMESIZE,
             .frame_max_len = CONFIG_STREAMER_FRAME_MAX_LENGTH,
             .fps = CONFIG_STREAMER_FPS,
+            .buffered_fbs = CONFIG_STREAMER_BUFFERED_FRAMES,
+            .fb_in_buffer_before_get = CONFIG_STREAMER_FRAMSE_BEFORE_GET,
         },
-        .cam_config = {
-            .cam_grab_mode = CONFIG_STREAMER_CAMERA_GRAB_MODE,
-            .cam_jpeg_quality = CONFIG_STREAMER_CAMERA_JPEG_QUALITY,
-            .cam_fb_count = CONFIG_STREAMER_CAMERA_FB_COUNT,
-        },
-        .buffered_fbs = CONFIG_STREAMER_BUFFERED_FRAMES,
     };
 
     client_handler = espfsp_client_play_init(&streamer_config);
