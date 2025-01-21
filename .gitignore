@@ -3,3 +3,4 @@ build
 managed_components
 compile_commands.json
 sdkconfig.old
+*.gz
