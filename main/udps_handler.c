@@ -3,6 +3,8 @@
  * Author: Maksymilian Komarnicki
  */
 
+#include "string.h"
+
 #include "esp_log.h"
 #include "esp_err.h"
 
@@ -24,9 +26,7 @@
 #define CONFIG_STREAMER_BUFFERED_FRAMES 10
 #define CONFIG_STREAMER_FRAMSE_BEFORE_GET 0
 
-#define CONFIG_STREAMER_IS_SERVER_LOCAL 1
 #define CONFIG_STREAMER_MDNS_SERVER_NAME "espfsp_server"
-#define CONFIG_STREAMER_CENTRAL_HOST_IP "192.168.8.142"
 
 static const char *TAG = "STREAMER_HANDLER";
 
@@ -59,9 +59,9 @@ static esp_err_t resolve_mdns_host(const char * host_name, struct esp_ip4_addr *
 }
 
 
-esp_err_t udps_init(){
+esp_err_t udps_init(const char *server_ip_addr){
     struct esp_ip4_addr server_addr;
-    if (CONFIG_STREAMER_IS_SERVER_LOCAL)
+    if (strlen(server_ip_addr) == 0)
     {
         while (resolve_mdns_host(CONFIG_STREAMER_MDNS_SERVER_NAME, &server_addr) != ESP_OK)
         {
@@ -70,7 +70,7 @@ esp_err_t udps_init(){
     }
     else
     {
-        server_addr.addr = esp_ip4addr_aton(CONFIG_STREAMER_CENTRAL_HOST_IP);
+        server_addr.addr = esp_ip4addr_aton(server_ip_addr);
     }
 
     espfsp_client_play_config_t streamer_config = {
@@ -106,5 +106,11 @@ esp_err_t udps_init(){
         return ESP_FAIL;
     }
 
+    return ESP_OK;
+}
+
+esp_err_t udps_deinit()
+{
+    espfsp_client_play_deinit(client_handler);
     return ESP_OK;
 }

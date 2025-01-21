@@ -90,34 +90,13 @@
         .section {
             margin-bottom: 20px;
         }
-        #no-sources-message {
-            display: none; /* Domyślnie ukryte */
-        }
-        #no-sources-message.visible {
-            display: block; /* Wyświetlane, gdy widoczne */
-        }
     </style>
 </head>
 <body>
     <div class="sidebar">
-        <div class="section" id="server-settings">
-            <h1>Server</h1>
-            <label for="server-type">Server Type:</label>
-            <select id="server-type">
-                <option value="local">Local</option>
-                <option value="remote">Remote</option>
-            </select>
-            <label for="server-address">Server Address:</label>
-            <input id="server-address" type="text" placeholder="Enter IP address" disabled>
-            <button id="set-server">Set Server</button>
-        </div>
-
         <div class="section" id="source-buttons">
-            <h1>Sources</h1>
-            <div id="sources-container">
-                <p id="no-sources-message" class="visible">No sources available.</p>
-            </div>
-            <button id="get-sources">Get Sources</button>
+            <h1>Available Sources</h1>
+            <p id="no-sources-message" style="display:none;">No sources available.</p>
         </div>
 
         <div class="section">
@@ -165,14 +144,12 @@
     </div>
 
     <script>
+        // Dynamically determine the IP of the server hosting the page
+        const ip = location.hostname; // Extract IP from the page URL
+        const streamUrl = `http://${ip}:81/stream`; // Construct the stream URL
+
         const toggleButton = document.getElementById('toggle-stream');
         const streamViewer = document.getElementById('stream-viewer');
-        const getSourcesButton = document.getElementById('get-sources');
-        const sourcesContainer = document.getElementById('sources-container');
-        const noSourcesMessage = document.getElementById('no-sources-message');
-        const serverType = document.getElementById('server-type');
-        const serverAddress = document.getElementById('server-address');
-        const setServerButton = document.getElementById('set-server');
 
         let isStreaming = false;
 
@@ -184,41 +161,14 @@
             }
         });
 
-        getSourcesButton.addEventListener('click', fetchSources);
-
-        serverType.addEventListener('change', () => {
-            if (serverType.value === 'remote') {
-                serverAddress.disabled = false;
-            } else {
-                serverAddress.disabled = true;
-                serverAddress.value = '';
-            }
-        });
-
-        setServerButton.addEventListener('click', () => {
-            const server = serverType.value === 'remote' ? `?addr=${encodeURIComponent(serverAddress.value)}` : '';
-            fetch(`/set_server${server}`)
-                .then(response => {
-                    if (response.ok) {
-                        alert('Server settings updated successfully');
-                    } else {
-                        alert('Failed to update server settings');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error setting server:', error);
-                    alert('Error setting server');
-                });
-        });
-
         function startStream() {
-            fetch('/start_stream')
+            fetch('/start_stream') // Start the stream on the server
                 .then(response => {
                     if (response.ok) {
                         isStreaming = true;
                         toggleButton.textContent = 'Stop Stream';
-                        streamViewer.src = `http://${location.hostname}:81/stream`;
-                        streamViewer.style.display = 'block';
+                        streamViewer.src = streamUrl; // Set the video stream source
+                        streamViewer.style.display = 'block'; // Show the video element
                     } else {
                         console.error("Failed to start stream");
                     }
@@ -227,13 +177,13 @@
         }
 
         function stopStream() {
-            fetch('/stop_stream')
+            fetch('/stop_stream') // Stop the stream on the server
                 .then(response => {
                     if (response.ok) {
                         isStreaming = false;
                         toggleButton.textContent = 'Start Stream';
-                        streamViewer.src = "";
-                        streamViewer.style.display = 'none';
+                        streamViewer.src = ""; // Remove the video source
+                        streamViewer.style.display = 'none'; // Hide the video element
                     } else {
                         console.error("Failed to stop stream");
                     }
@@ -244,30 +194,25 @@
         async function fetchSources() {
             try {
                 const response = await fetch('/get_sources');
-                if (!response.ok) {
-                    throw new Error('Failed to fetch sources');
-                }
                 const sources = await response.json();
-
-                // Clear existing sources
-                sourcesContainer.innerHTML = "";
+                const sourceButtonsContainer = document.getElementById('source-buttons');
+                const noSourcesMessage = document.getElementById('no-sources-message');
 
                 if (sources.length === 0) {
-                    noSourcesMessage.classList.add('visible');
+                    noSourcesMessage.style.display = 'block';
                 } else {
-                    noSourcesMessage.classList.remove('visible');
+                    noSourcesMessage.style.display = 'none';
                     sources.forEach(source => {
                         const button = document.createElement('button');
                         button.textContent = source;
                         button.addEventListener('click', () => {
                             fetch(`/set_source?name=${encodeURIComponent(source)}`);
                         });
-                        sourcesContainer.appendChild(button);
+                        sourceButtonsContainer.appendChild(button);
                     });
                 }
             } catch (error) {
                 console.error('Error fetching sources:', error);
-                noSourcesMessage.classList.add('visible');
             }
         }
 
@@ -282,6 +227,9 @@
             const formData = new URLSearchParams(new FormData(event.target)).toString();
             fetch(`/set_frame?${formData}`);
         });
+
+        // Fetch sources on page load
+        fetchSources();
     </script>
 </body>
 </html>

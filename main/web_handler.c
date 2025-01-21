@@ -3,6 +3,8 @@
  * Author: Maksymilian Komarnicki
  */
 
+#include "string.h"
+
 #include "esp_log.h"
 #include "esp_err.h"
 
@@ -14,18 +16,31 @@
 
 #include "index_html_gz.h"
 #include "espfsp_client_play.h"
+#include "udps_handler.h"
 
 static const char *TAG = "WEB_HANDLER";
 
 extern espfsp_client_play_handler_t client_handler;
 
 esp_err_t start_stream_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_404(req);
+        return ESP_OK;
+    }
+
     ESP_LOGI(TAG, "Start stream request received");
     httpd_resp_send(req, "Stream started", HTTPD_RESP_USE_STRLEN);
     return espfsp_client_play_start_stream(client_handler);
 }
 
 esp_err_t stop_stream_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_404(req);
+        return ESP_OK;
+    }
+
     ESP_LOGI(TAG, "Stop stream request received");
     httpd_resp_send(req, "Stream stopped", HTTPD_RESP_USE_STRLEN);
     return espfsp_client_play_stop_stream(client_handler);
@@ -36,11 +51,17 @@ esp_err_t stream_handler(httpd_req_t *req) {
     int failed_fb_threshold = 10;
     int failed_fb = 0;
 
-    // Ustawienie nagłówków odpowiedzi
     httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
     while (true) {
+        if (client_handler == NULL)
+        {
+            httpd_resp_send_chunk(req, NULL, 0);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            continue;
+        }
+
         espfsp_fb_t *fb = espfsp_client_play_get_fb(client_handler, 400);
         if (!fb) {
             ESP_LOGE(TAG, "Błąd pobierania ramki");
@@ -48,25 +69,21 @@ esp_err_t stream_handler(httpd_req_t *req) {
             if (failed_fb > failed_fb_threshold)
             {
                 httpd_resp_send(req, NULL, 0);
-                return ESP_OK;
             }
             continue;
         }
 
         failed_fb = 0;
 
-        // Wygeneruj nagłówki dla ramki
         size_t hlen = snprintf(part_buf, sizeof(part_buf),
                                "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %zu\r\n\r\n",
                                fb->len);
-        // Wyślij nagłówki
         if (httpd_resp_send_chunk(req, part_buf, hlen) != ESP_OK) {
             espfsp_client_play_return_fb(client_handler, fb);
             ESP_LOGE(TAG, "Błąd wysyłania nagłówków ramki");
             break;
         }
 
-        // Wyślij ramkę obrazu
         if (httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len) != ESP_OK) {
             espfsp_client_play_return_fb(client_handler, fb);
             ESP_LOGE(TAG, "Błąd wysyłania ramki");
@@ -75,16 +92,12 @@ esp_err_t stream_handler(httpd_req_t *req) {
 
         espfsp_client_play_return_fb(client_handler, fb);
 
-        // Wyślij zakończenie ramki
         if (httpd_resp_send_chunk(req, "\r\n", 2) != ESP_OK) {
             ESP_LOGE(TAG, "Błąd zakończenia ramki");
             break;
         }
-
-        vTaskDelay(30 / portTICK_PERIOD_MS);
     }
 
-    // Zakończ połączenie
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
@@ -97,6 +110,12 @@ esp_err_t index_handler(httpd_req_t *req) {
 }
 
 esp_err_t get_src_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_404(req);
+        return ESP_OK;
+    }
+
     char sources_names[5][30];
     int sources_count = 5;
 
@@ -112,29 +131,78 @@ esp_err_t get_src_handler(httpd_req_t *req) {
     char json_response[512];
     char *ptr = json_response;
 
-    // Rozpocznij tablicę JSON
     ptr += sprintf(ptr, "[");
 
-    // Dodaj każdy element jako ciąg JSON
     for (size_t i = 0; i < sources_count; ++i) {
         ptr += sprintf(ptr, "\"%s\"", sources_names[i]);
         if (i < sources_count - 1) {
-            ptr += sprintf(ptr, ","); // Dodaj przecinek między elementami
+            ptr += sprintf(ptr, ",");
         }
     }
 
-    // Zakończ tablicę JSON
     sprintf(ptr, "]");
 
-    // Ustawienie nagłówków odpowiedzi
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-    // Wysłanie odpowiedzi
     return httpd_resp_send(req, json_response, HTTPD_RESP_USE_STRLEN);
 }
 
+#include "lwip/ip_addr.h"
+
+static bool is_valid_ip(const char *ip_addr_str) {
+    ip_addr_t addr;
+    return ipaddr_aton(ip_addr_str, &addr) != 0;
+}
+
+esp_err_t set_server_handler(httpd_req_t *req) {
+    esp_err_t ret = ESP_OK;
+
+    if (client_handler != NULL)
+    {
+        esp_err_t ret = udps_deinit();
+    }
+    if (ret != ESP_OK)
+    {
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+
+    char query[128];
+    char server_ip_addr[30];
+
+    size_t query_len = httpd_req_get_url_query_len(req) + 1;
+    if (query_len > 1) {
+        if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+            ESP_LOGI("QUERY", "Query string: %s", query);
+
+            if (httpd_query_key_value(query, "name", server_ip_addr, sizeof(server_ip_addr)) == ESP_OK) {
+                ESP_LOGI("QUERY", "Value of 'server_ip_addr': %s", server_ip_addr);
+            }
+        }
+    }
+
+    if (strlen(server_ip_addr) == 0 || is_valid_ip(server_ip_addr))
+    {
+        esp_err_t ret = udps_init(server_ip_addr);
+        if (ret == ESP_FAIL)
+        {
+            ESP_LOGE(TAG, "ESPFSP protocol init failed");
+            return ret;
+        }
+    }
+
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 esp_err_t set_src_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_404(req);
+        return ESP_OK;
+    }
+
     char query[128];
     char name[30];
 
@@ -162,6 +230,12 @@ esp_err_t set_src_handler(httpd_req_t *req) {
 }
 
 esp_err_t set_frame_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_404(req);
+        return ESP_OK;
+    }
+
     espfsp_frame_config_t frame_config = {
         .fps = 15,
         .frame_max_len = (100 * 1014),
@@ -228,6 +302,12 @@ esp_err_t set_frame_handler(httpd_req_t *req) {
 }
 
 esp_err_t set_cam_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_404(req);
+        return ESP_OK;
+    }
+
     espfsp_cam_config_t cam_config = {
         .cam_fb_count = 2, // Useless now
         .cam_grab_mode = ESPFSP_GRAB_LATEST, // Useless now
@@ -343,6 +423,19 @@ httpd_uri_t get_src_uri = {
 #endif
 };
 
+httpd_uri_t set_server_uri = {
+    .uri = "/set_server",
+    .method = HTTP_GET,
+    .handler = set_server_handler,
+    .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    ,
+    .is_websocket = true,
+    .handle_ws_control_frames = false,
+    .supported_subprotocol = NULL
+#endif
+};
+
 httpd_uri_t set_src_uri = {
     .uri = "/set_source",
     .method = HTTP_GET,
@@ -404,6 +497,7 @@ httpd_handle_t start_webserver(void)
         httpd_register_uri_handler(server, &set_src_uri);
         httpd_register_uri_handler(server, &set_frame_uri);
         httpd_register_uri_handler(server, &set_cam_uri);
+        httpd_register_uri_handler(server, &set_server_uri);
         return server;
     }
 
