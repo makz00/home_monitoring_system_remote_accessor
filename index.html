@@ -55,6 +55,10 @@
             background-color: #d1d5db;
             cursor: not-allowed;
         }
+        .source-button {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
         form {
             background: white;
             padding: 15px;
@@ -89,12 +93,14 @@
         }
         .section {
             margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ccc;
         }
         #no-sources-message {
-            display: none; /* Domyślnie ukryte */
+            display: none;
         }
         #no-sources-message.visible {
-            display: block; /* Wyświetlane, gdy widoczne */
+            display: block;
         }
     </style>
 </head>
@@ -121,6 +127,7 @@
         </div>
 
         <div class="section">
+            <h1>Streaming</h1>
             <button id="toggle-stream">Start Stream</button>
         </div>
 
@@ -259,6 +266,7 @@
                     sources.forEach(source => {
                         const button = document.createElement('button');
                         button.textContent = source;
+                        button.classList.add('source-button');
                         button.addEventListener('click', () => {
                             fetch(`/set_source?name=${encodeURIComponent(source)}`);
                         });

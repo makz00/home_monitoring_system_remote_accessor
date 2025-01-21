@@ -160,7 +160,7 @@ esp_err_t set_server_handler(httpd_req_t *req) {
 
     if (client_handler != NULL)
     {
-        esp_err_t ret = udps_deinit();
+        udps_deinit();
     }
     if (ret != ESP_OK)
     {
