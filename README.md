@@ -39,6 +39,6 @@ The client access module serves as the user-facing component of the monitoring s
 
 Maksymilian Komarnicki – [GitHub](https://github.com/makz00).
 
-## Licencja
+## License
 
 ...
