@@ -48,8 +48,6 @@ esp_err_t stop_stream_handler(httpd_req_t *req) {
 
 esp_err_t stream_handler(httpd_req_t *req) {
     char part_buf[64];
-    int failed_fb_threshold = 10;
-    int failed_fb = 0;
 
     httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -62,15 +60,8 @@ esp_err_t stream_handler(httpd_req_t *req) {
 
         espfsp_fb_t *fb = espfsp_client_play_get_fb(client_handler, 400);
         if (!fb) {
-            if (++failed_fb > failed_fb_threshold)
-            {
-                break;
-            }
-
             continue;
         }
-
-        failed_fb = 0;
 
         size_t hlen = snprintf(part_buf, sizeof(part_buf),
                                "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %zu\r\n\r\n",
