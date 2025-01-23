@@ -57,19 +57,16 @@ esp_err_t stream_handler(httpd_req_t *req) {
     while (true) {
         if (client_handler == NULL)
         {
-            httpd_resp_send_chunk(req, NULL, 0);
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            continue;
+            break;
         }
 
         espfsp_fb_t *fb = espfsp_client_play_get_fb(client_handler, 400);
         if (!fb) {
-            ESP_LOGE(TAG, "Błąd pobierania ramki");
-            failed_fb++;
-            if (failed_fb > failed_fb_threshold)
+            if (++failed_fb > failed_fb_threshold)
             {
-                httpd_resp_send(req, NULL, 0);
+                break;
             }
+
             continue;
         }
 
@@ -480,12 +477,11 @@ httpd_handle_t start_webserver(void)
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-    // Ustawienie Keep-Alive timeout
-    config.lru_purge_enable = true; // LRU Cache dla zarządzania połączeniami
-    // config.keep_alive_enable = true; // Włączenie Keep-Alive
-    // config.keep_alive_idle = 10; // Czas (w sekundach), przez jaki połączenie pozostaje otwarte bez aktywności
-    // config.keep_alive_interval = 5; // Interwał między Keep-Alive a żądaniem
-    // config.keep_alive_count = 3; // Maksymalna liczba Keep-Alive prób
+    config.lru_purge_enable = true;
+    // config.keep_alive_enable = true;
+    // config.keep_alive_idle = 10;
+    // config.keep_alive_interval = 5;
+    // config.keep_alive_count = 3;
 
     ESP_LOGI(TAG, "Starting web server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
@@ -510,14 +506,11 @@ httpd_handle_t start_stream_server(void)
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
-    // Ustawienie Keep-Alive timeout
-    config.lru_purge_enable = true; // LRU Cache dla zarządzania połączeniami
-    // config.keep_alive_enable = true; // Włączenie Keep-Alive
-    // config.keep_alive_idle = 10; // Czas (w sekundach), przez jaki połączenie pozostaje otwarte bez aktywności
-    // config.keep_alive_interval = 5; // Interwał między Keep-Alive a żądaniem
-    // config.keep_alive_count = 3; // Maksymalna liczba Keep-Alive prób
-
-    // ra_filter_init(&ra_filter, 20);
+    config.lru_purge_enable = true;
+    config.keep_alive_enable = true;
+    config.keep_alive_idle = 10;
+    config.keep_alive_interval = 5;
+    config.keep_alive_count = 3;
 
     config.server_port += 1;
     config.ctrl_port += 1;

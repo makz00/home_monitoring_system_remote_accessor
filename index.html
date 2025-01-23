@@ -137,7 +137,7 @@
                 <label for="jpeg-quality">JPEG Quality:</label>
                 <input id="jpeg-quality" type="text" name="cam_jpeg_quality">
 
-                <label for="frame-size">Frame Size (Bytes):</label>
+                <label for="frame-size">Frame Size:</label>
                 <input id="frame-size" type="text" name="cam_frame_size">
 
                 <label for="pixel-format">Pixel Format:</label>
@@ -153,13 +153,13 @@
                 <label for="fps">FPS:</label>
                 <input id="fps" type="text" name="fps">
 
-                <label for="frame-max-len">Frame Max Length (Bytes):</label>
+                <label for="frame-max-len">Frame Max Length:</label>
                 <input id="frame-max-len" type="text" name="frame_max_len">
 
-                <label for="buffered-fbs">Buffered Frame Buffers:</label>
+                <label for="buffered-fbs">Buffer Size:</label>
                 <input id="buffered-fbs" type="text" name="buffered_fbs">
 
-                <label for="fb-before-get">Frame Buffer Before Get:</label>
+                <label for="fb-before-get">Ready Frames:</label>
                 <input id="fb-before-get" type="text" name="fb_in_buffer_before_get">
 
                 <button type="submit">Set Frame Settings</button>
@@ -182,6 +182,26 @@
         const setServerButton = document.getElementById('set-server');
 
         let isStreaming = false;
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.position = 'fixed';
+            notification.style.bottom = '20px';
+            notification.style.right = '20px';
+            notification.style.backgroundColor = '#4caf50';
+            notification.style.color = '#fff';
+            notification.style.padding = '10px 20px';
+            notification.style.borderRadius = '8px';
+            notification.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+            notification.style.zIndex = '1000';
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
 
         toggleButton.addEventListener('click', () => {
             if (isStreaming) {
@@ -268,11 +288,14 @@
                         button.textContent = source;
                         button.classList.add('source-button');
                         button.addEventListener('click', () => {
-                            fetch(`/set_source?name=${encodeURIComponent(source)}`);
+                            fetch(`/set_source?name=${encodeURIComponent(source)}`)
+                                .then(() => showNotification(`Source "${source}" set`))
+                                .catch(() => showNotification(`Failed to set source "${source}"`));
                         });
                         sourcesContainer.appendChild(button);
                     });
                 }
+                showNotification(`Source updated`);
             } catch (error) {
                 console.error('Error fetching sources:', error);
                 noSourcesMessage.classList.add('visible');
@@ -282,13 +305,17 @@
         document.getElementById('camera-settings-form').addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new URLSearchParams(new FormData(event.target)).toString();
-            fetch(`/set_cam?${formData}`);
+            fetch(`/set_cam?${formData}`)
+                .then(() => showNotification('Camera settings updated'))
+                .catch(() => showNotification('Failed to update camera settings'));
         });
 
         document.getElementById('frame-settings-form').addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new URLSearchParams(new FormData(event.target)).toString();
-            fetch(`/set_frame?${formData}`);
+            fetch(`/set_frame?${formData}`)
+                .then(() => showNotification('Frame settings updated'))
+                .catch(() => showNotification('Failed to update frame settings'));
         });
     </script>
 </body>
