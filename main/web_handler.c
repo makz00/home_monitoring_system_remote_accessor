@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "lwip/ip_addr.h"
 #include "esp_timer.h"
 #include "esp_http_server.h"
 
@@ -25,25 +26,37 @@ extern espfsp_client_play_handler_t client_handler;
 esp_err_t start_stream_handler(httpd_req_t *req) {
     if (client_handler == NULL)
     {
-        httpd_resp_send_404(req);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "Start stream request received");
-    httpd_resp_send(req, "Stream started", HTTPD_RESP_USE_STRLEN);
-    return espfsp_client_play_start_stream(client_handler);
+    esp_err_t ret = espfsp_client_play_start_stream(client_handler);
+    if (ret == ESP_OK)
+    {
+        httpd_resp_send(req, "Stream started", HTTPD_RESP_USE_STRLEN);
+        return ret;
+    }
+
+    httpd_resp_send_500(req);
+    return ESP_OK;
 }
 
 esp_err_t stop_stream_handler(httpd_req_t *req) {
     if (client_handler == NULL)
     {
-        httpd_resp_send_404(req);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "Stop stream request received");
-    httpd_resp_send(req, "Stream stopped", HTTPD_RESP_USE_STRLEN);
-    return espfsp_client_play_stop_stream(client_handler);
+    esp_err_t ret = espfsp_client_play_stop_stream(client_handler);
+    if (ret == ESP_OK)
+    {
+        httpd_resp_send(req, "Stream stopped", HTTPD_RESP_USE_STRLEN);
+        return ret;
+    }
+
+    httpd_resp_send_500(req);
+    return ESP_OK;
 }
 
 esp_err_t stream_handler(httpd_req_t *req) {
@@ -59,7 +72,8 @@ esp_err_t stream_handler(httpd_req_t *req) {
         }
 
         espfsp_fb_t *fb = espfsp_client_play_get_fb(client_handler, 400);
-        if (!fb) {
+        if (!fb)
+        {
             continue;
         }
 
@@ -68,20 +82,24 @@ esp_err_t stream_handler(httpd_req_t *req) {
                                fb->len);
         if (httpd_resp_send_chunk(req, part_buf, hlen) != ESP_OK) {
             espfsp_client_play_return_fb(client_handler, fb);
-            ESP_LOGE(TAG, "Błąd wysyłania nagłówków ramki");
+            ESP_LOGE(TAG, "Send HTTP response header failed");
             break;
         }
 
         if (httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len) != ESP_OK) {
             espfsp_client_play_return_fb(client_handler, fb);
-            ESP_LOGE(TAG, "Błąd wysyłania ramki");
+            ESP_LOGE(TAG, "Send HTTP response failed");
             break;
         }
 
-        espfsp_client_play_return_fb(client_handler, fb);
+        esp_err_t ret = espfsp_client_play_return_fb(client_handler, fb);
+        if (ret != ESP_OK)
+        {
+            break;
+        }
 
         if (httpd_resp_send_chunk(req, "\r\n", 2) != ESP_OK) {
-            ESP_LOGE(TAG, "Błąd zakończenia ramki");
+            ESP_LOGE(TAG, "Send HTTP Response end failed");
             break;
         }
     }
@@ -100,30 +118,28 @@ esp_err_t index_handler(httpd_req_t *req) {
 esp_err_t get_src_handler(httpd_req_t *req) {
     if (client_handler == NULL)
     {
-        httpd_resp_send_404(req);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
     char sources_names[5][30];
-    int sources_count = 5;
+    int sources_names_len = 5;
 
-    esp_err_t ret = espfsp_client_play_get_sources_timeout(client_handler, sources_names, &sources_count, 1000);
-    if (ret == ESP_FAIL)
+    esp_err_t ret = espfsp_client_play_get_sources_timeout(client_handler, sources_names, &sources_names_len, 1000);
+    if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "Get src failed");
+        httpd_resp_send(req, NULL, 0);
         return ESP_OK;
     }
-
-    ESP_LOGI(TAG, "Received sources count: %d", sources_count);
 
     char json_response[512];
     char *ptr = json_response;
 
     ptr += sprintf(ptr, "[");
 
-    for (size_t i = 0; i < sources_count; ++i) {
+    for (size_t i = 0; i < sources_names_len; ++i) {
         ptr += sprintf(ptr, "\"%s\"", sources_names[i]);
-        if (i < sources_count - 1) {
+        if (i < sources_names_len - 1) {
             ptr += sprintf(ptr, ",");
         }
     }
@@ -136,28 +152,21 @@ esp_err_t get_src_handler(httpd_req_t *req) {
     return httpd_resp_send(req, json_response, HTTPD_RESP_USE_STRLEN);
 }
 
-#include "lwip/ip_addr.h"
-
 static bool is_valid_ip(const char *ip_addr_str) {
     ip_addr_t addr;
     return ipaddr_aton(ip_addr_str, &addr) != 0;
 }
 
 esp_err_t set_server_handler(httpd_req_t *req) {
-    esp_err_t ret = ESP_OK;
-
     if (client_handler != NULL)
     {
-        udps_deinit();
-    }
-    if (ret != ESP_OK)
-    {
-        httpd_resp_send(req, NULL, 0);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
     char query[128];
     char server_ip_addr[30];
+    memset(server_ip_addr, 0, sizeof(server_ip_addr));
 
     size_t query_len = httpd_req_get_url_query_len(req) + 1;
     if (query_len > 1) {
@@ -173,21 +182,24 @@ esp_err_t set_server_handler(httpd_req_t *req) {
     if (strlen(server_ip_addr) == 0 || is_valid_ip(server_ip_addr))
     {
         esp_err_t ret = udps_init(server_ip_addr);
-        if (ret == ESP_FAIL)
+        if (ret != ESP_OK)
         {
-            ESP_LOGE(TAG, "ESPFSP protocol init failed");
-            return ret;
+            httpd_resp_send_500(req);
+            return ESP_OK;
         }
     }
+    else
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, NULL);
+    }
 
-    httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
 
 esp_err_t set_src_handler(httpd_req_t *req) {
     if (client_handler == NULL)
     {
-        httpd_resp_send_404(req);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
@@ -206,12 +218,11 @@ esp_err_t set_src_handler(httpd_req_t *req) {
     }
 
     esp_err_t ret = espfsp_client_play_set_source(client_handler, name);
-    if (ret == ESP_FAIL)
+    if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "Set src failed");
+        httpd_resp_send_500(req);
+        return ESP_OK;
     }
-
-    ESP_LOGI(TAG, "Src set");
 
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
@@ -280,9 +291,10 @@ esp_err_t set_frame_handler(httpd_req_t *req) {
     }
 
     esp_err_t ret = espfsp_client_play_reconfigure_frame(client_handler, &frame_config);
-    if (ret == ESP_FAIL)
+    if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "Send fram config failed");
+        httpd_resp_send_500(req);
+        return ESP_OK;
     }
 
     httpd_resp_send(req, NULL, 0);
@@ -292,7 +304,7 @@ esp_err_t set_frame_handler(httpd_req_t *req) {
 esp_err_t set_cam_handler(httpd_req_t *req) {
     if (client_handler == NULL)
     {
-        httpd_resp_send_404(req);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
@@ -337,9 +349,10 @@ esp_err_t set_cam_handler(httpd_req_t *req) {
     }
 
     esp_err_t ret = espfsp_client_play_reconfigure_cam(client_handler, &cam_config);
-    if (ret == ESP_FAIL)
+    if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "Send cam config failed");
+        httpd_resp_send_500(req);
+        return ESP_OK;
     }
 
     httpd_resp_send(req, NULL, 0);
