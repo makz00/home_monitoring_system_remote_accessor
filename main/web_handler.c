@@ -187,6 +187,8 @@ esp_err_t set_server_handler(httpd_req_t *req) {
             httpd_resp_send_500(req);
             return ESP_OK;
         }
+
+        httpd_resp_send(req, NULL, 0);
     }
     else
     {
@@ -236,7 +238,7 @@ esp_err_t set_frame_handler(httpd_req_t *req) {
     }
 
     espfsp_frame_config_t frame_config = {
-        .fps = 15,
+        .fps = 1,
         .frame_max_len = (100 * 1014),
         .buffered_fbs = 10,
         .fb_in_buffer_before_get = 0,
@@ -359,6 +361,73 @@ esp_err_t set_cam_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+esp_err_t get_frame_config_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
+        return ESP_OK;
+    }
+
+    espfsp_frame_config_t frame_config;
+
+    esp_err_t ret = espfsp_client_play_get_frame(client_handler, &frame_config, 2000);
+    if (ret != ESP_OK)
+    {
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+
+    char json_response[512];
+    char *ptr = json_response;
+
+    ptr += sprintf(ptr, "{");
+
+    ptr += sprintf(ptr, "\"fps\": %d,", frame_config.fps);
+    ptr += sprintf(ptr, "\"frame_max_len\": %ld,", frame_config.frame_max_len);
+    ptr += sprintf(ptr, "\"buffered_fbs\": %d,", frame_config.buffered_fbs);
+    ptr += sprintf(ptr, "\"fb_in_buffer_before_get\": %d", frame_config.fb_in_buffer_before_get);
+
+    sprintf(ptr, "}");
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    return httpd_resp_send(req, json_response, HTTPD_RESP_USE_STRLEN);
+}
+
+esp_err_t get_cam_config_handler(httpd_req_t *req) {
+    if (client_handler == NULL)
+    {
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
+        return ESP_OK;
+    }
+
+    espfsp_cam_config_t cam_config;
+
+    esp_err_t ret = espfsp_client_play_get_cam(client_handler, &cam_config, 2000);
+    if (ret != ESP_OK)
+    {
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+
+    char json_response[512];
+    char *ptr = json_response;
+
+    ptr += sprintf(ptr, "{");
+
+    ptr += sprintf(ptr, "\"cam_jpeg_quality\": %d,", cam_config.cam_jpeg_quality);
+    ptr += sprintf(ptr, "\"cam_frame_size\": %d,", cam_config.cam_frame_size);
+    ptr += sprintf(ptr, "\"cam_pixel_format\": %d", cam_config.cam_pixel_format);
+
+    sprintf(ptr, "}");
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    return httpd_resp_send(req, json_response, HTTPD_RESP_USE_STRLEN);
+}
+
 httpd_uri_t stream_uri = {
     .uri = "/stream",
     .method = HTTP_GET,
@@ -476,11 +545,38 @@ httpd_uri_t set_cam_uri = {
 #endif
 };
 
+httpd_uri_t get_frame_config_uri = {
+    .uri = "/get_config_frame",
+    .method = HTTP_GET,
+    .handler = get_frame_config_handler,
+    .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    ,
+    .is_websocket = true,
+    .handle_ws_control_frames = false,
+    .supported_subprotocol = NULL
+#endif
+};
+
+httpd_uri_t get_cam_config_uri = {
+    .uri = "/get_config_cam",
+    .method = HTTP_GET,
+    .handler = get_cam_config_handler,
+    .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    ,
+    .is_websocket = true,
+    .handle_ws_control_frames = false,
+    .supported_subprotocol = NULL
+#endif
+};
+
 httpd_handle_t start_webserver(void)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
+    config.max_uri_handlers = 10;
     config.lru_purge_enable = true;
     // config.keep_alive_enable = true;
     // config.keep_alive_idle = 10;
@@ -498,6 +594,8 @@ httpd_handle_t start_webserver(void)
         httpd_register_uri_handler(server, &set_frame_uri);
         httpd_register_uri_handler(server, &set_cam_uri);
         httpd_register_uri_handler(server, &set_server_uri);
+        httpd_register_uri_handler(server, &get_frame_config_uri);
+        httpd_register_uri_handler(server, &get_cam_config_uri);
         return server;
     }
 

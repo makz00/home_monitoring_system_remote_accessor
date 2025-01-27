@@ -134,14 +134,14 @@
         <div class="section">
             <h1>Camera Settings</h1>
             <form id="camera-settings-form">
-                <label for="jpeg-quality">JPEG Quality:</label>
-                <input id="jpeg-quality" type="text" name="cam_jpeg_quality">
+                <label for="cam_jpeg_quality">JPEG Quality:</label>
+                <input id="cam_jpeg_quality" type="text" name="cam_jpeg_quality">
 
-                <label for="frame-size">Frame Size:</label>
-                <input id="frame-size" type="text" name="cam_frame_size">
+                <label for="cam_frame_size">Frame Size:</label>
+                <input id="cam_frame_size" type="text" name="cam_frame_size">
 
-                <label for="pixel-format">Pixel Format:</label>
-                <input id="pixel-format" type="text" name="cam_pixel_format">
+                <label for="cam_pixel_format">Pixel Format:</label>
+                <input id="cam_pixel_format" type="text" name="cam_pixel_format">
 
                 <button type="submit">Set Camera Settings</button>
             </form>
@@ -153,14 +153,14 @@
                 <label for="fps">FPS:</label>
                 <input id="fps" type="text" name="fps">
 
-                <label for="frame-max-len">Frame Max Length:</label>
-                <input id="frame-max-len" type="text" name="frame_max_len">
+                <label for="frame_max_len">Frame Max Length:</label>
+                <input id="frame_max_len" type="text" name="frame_max_len">
 
-                <label for="buffered-fbs">Buffer Size:</label>
-                <input id="buffered-fbs" type="text" name="buffered_fbs">
+                <label for="buffered_fbs">Buffer Size:</label>
+                <input id="buffered_fbs" type="text" name="buffered_fbs">
 
-                <label for="fb-before-get">Ready Frames:</label>
-                <input id="fb-before-get" type="text" name="fb_in_buffer_before_get">
+                <label for="fb_in_buffer_before_get">Ready Frames:</label>
+                <input id="fb_in_buffer_before_get" type="text" name="fb_in_buffer_before_get">
 
                 <button type="submit">Set Frame Settings</button>
             </form>
@@ -268,6 +268,54 @@
                 .catch(console.error);
         }
 
+        async function fetchFrameConfig() {
+            try {
+                const response = await fetch('/get_config_frame');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch frame configuration');
+                }
+                const config = await response.json();
+
+                document.getElementById('fps').value = config.fps || '';
+                document.getElementById('frame_max_len').value = config.frame_max_len || '';
+                document.getElementById('buffered_fbs').value = config.buffered_fbs || '';
+                document.getElementById('fb_in_buffer_before_get').value = config.fb_in_buffer_before_get || '';
+            } catch (error) {
+                console.error('Error fetching frame config:', error);
+            }
+        }
+
+        async function fetchCamConfig() {
+            try {
+                const response = await fetch('/get_config_cam');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch camera configuration');
+                }
+                const config = await response.json();
+
+                document.getElementById('cam_jpeg_quality').value = config.cam_jpeg_quality || '';
+                document.getElementById('cam_frame_size').value = config.cam_frame_size || '';
+                document.getElementById('cam_pixel_format').value = config.cam_pixel_format || '';
+            } catch (error) {
+                console.error('Error fetching camera config:', error);
+            }
+        }
+
+        async function setSource(source) {
+            try {
+                const response = await fetch(`/set_source?name=${encodeURIComponent(source)}`);
+                if (!response.ok) {
+                    throw new Error('Failed to set source');
+                }
+                showNotification(`Source "${source}" set`);
+                await fetchFrameConfig();
+                await fetchCamConfig();
+            } catch (error) {
+                console.error('Error setting source:', error);
+                showNotification(`Failed to set source "${source}"`);
+            }
+        }
+
         async function fetchSources() {
             try {
                 const response = await fetch('/get_sources');
@@ -276,7 +324,6 @@
                 }
                 const sources = await response.json();
 
-                // Clear existing sources
                 sourcesContainer.innerHTML = "";
 
                 if (sources.length === 0) {
@@ -287,11 +334,12 @@
                         const button = document.createElement('button');
                         button.textContent = source;
                         button.classList.add('source-button');
-                        button.addEventListener('click', () => {
-                            fetch(`/set_source?name=${encodeURIComponent(source)}`)
-                                .then(() => showNotification(`Source "${source}" set`))
-                                .catch(() => showNotification(`Failed to set source "${source}"`));
-                        });
+                        // button.addEventListener('click', () => {
+                        //     fetch(`/set_source?name=${encodeURIComponent(source)}`)
+                        //         .then(() => showNotification(`Source "${source}" set`))
+                        //         .catch(() => showNotification(`Failed to set source "${source}"`));
+                        // });
+                        button.addEventListener('click', () => setSource(source));
                         sourcesContainer.appendChild(button);
                     });
                 }
