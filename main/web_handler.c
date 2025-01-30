@@ -74,6 +74,8 @@ esp_err_t stream_handler(httpd_req_t *req) {
         espfsp_fb_t *fb = espfsp_client_play_get_fb(client_handler, 400);
         if (!fb)
         {
+            // Delay to feed WD
+            vTaskDelay(10 / portTICK_PERIOD_MS);
             continue;
         }
 
@@ -102,6 +104,9 @@ esp_err_t stream_handler(httpd_req_t *req) {
             ESP_LOGE(TAG, "Send HTTP Response end failed");
             break;
         }
+
+        // Delay to feed WD. No more than 100fps will be displayed
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 
     httpd_resp_send_chunk(req, NULL, 0);
@@ -233,7 +238,7 @@ esp_err_t set_src_handler(httpd_req_t *req) {
 esp_err_t set_frame_handler(httpd_req_t *req) {
     if (client_handler == NULL)
     {
-        httpd_resp_send_404(req);
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, NULL);
         return ESP_OK;
     }
 
